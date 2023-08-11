@@ -2,8 +2,8 @@ import sqlite3
 from config import *
 from aiogram import types
 
-async def check_and_update_rank(user_id, new_rank, points, message):
 
+async def check_and_update_rank(user_id, new_rank, points, message):
     conn = sqlite3.connect(REPA_BD)
     cursor = conn.cursor()
     conn1 = sqlite3.connect(STORE_BD)
@@ -44,22 +44,22 @@ async def check_and_update_rank(user_id, new_rank, points, message):
         conn.close()
         conn1.close()
 
-
-def user_exists(user_id):
-    conn = sqlite3.connect(STORE_BD)  # Замените на путь к вашей базе данных
-    cursor = conn.cursor()
-
-    try:
-        cursor.execute('SELECT user_id FROM users WHERE user_id=?', (user_id,))
-        result = cursor.fetchone()
-        return result is not None
-    finally:
-        conn.close()
-    # Используйте эту функцию для проверки существования пользователя
-    if user_exists(user_id):
-        pass
-    else:
-        pass
+#
+# def user_exists(user_id):
+#     conn = sqlite3.connect(STORE_BD)
+#     cursor = conn.cursor()
+#
+#     try:
+#         cursor.execute('SELECT user_id FROM users WHERE user_id=?', (user_id,))
+#         result = cursor.fetchone()
+#         return result is not None
+#     finally:
+#         conn.close()
+#
+#     if user_exists(user_id):
+#         pass
+#     else:
+#         pass
 
 # import sqlite3
 #
