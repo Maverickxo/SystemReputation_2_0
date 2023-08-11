@@ -1,0 +1,9 @@
+REPA_BD = 'reputation.db'
+STORE_BD = 'C:/PYTHON_PJ/KRAFT_STROE_3_0/ShopDB.db'
+MSG_TIMER = 10
+
+
+TOKEN = '6156241028:AAGeYMYXby560yzIl6YuMRZpsn_YFDXntOk' #тестовый
+
+
+# TOKEN = '6015478590:AAEEqzvLuDq29vBfCYwtGOogm4iaVDZpmOk'#РАБОЧИЙ
