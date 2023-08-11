@@ -51,7 +51,7 @@ def create_database():
                 "ranks"      TEXT,
                 "money"      INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY("user_id")
-        )''')  # Закрывающая скобка была добавлена здесь
+        )''')
     conn.commit()
     conn.close()
 
