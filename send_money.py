@@ -2,7 +2,7 @@ import sqlite3
 from aiogram import types
 import asyncio
 from config import *
-
+from money_log import transaction_log
 
 # Подключение к базе данных SQLite
 conn = sqlite3.connect(STORE_BD)
@@ -36,6 +36,13 @@ def remove_coins(user_id, coins):
 
 
 async def send_coins_to_user(message: types.Message):
+    sender_username = message.from_user.mention
+    sender_user_id = message.from_user.id
+    sender_fullname = message.from_user.full_name
+    recip_username = message.reply_to_message.from_user.mention
+    recip_user_id = message.reply_to_message.from_user.id
+    recipient_fullname = message.reply_to_message.from_user.full_name
+
     words = message.text.split()
     if len(words) == 1:
         msg = await message.answer("Выберите пользователя и укажите монеты")  #
@@ -87,6 +94,11 @@ async def send_coins_to_user(message: types.Message):
         add_coins(user_id, coins)
         remove_coins(sender_id, coins)
         msg = await message.reply(f'Вы успешно отправили {coins} KRAFT coins\nпользователю {user_first_name}')
+
+        # TODO: проверка активности при переводе
+        await transaction_log(sender_username, sender_user_id, sender_fullname, recip_username, recip_user_id,
+                              recipient_fullname, coins, message)
+
     await asyncio.sleep(MSG_TIMER)
     await msg.delete()
     await message.delete()
