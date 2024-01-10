@@ -4,8 +4,8 @@ import re
 import os
 from aiogram import types
 
-time_threshold_minutes = 5
-max_transactions = 3
+time_limit_minutes = 120
+max_transactions = 2
 
 
 def clean_user_name(filename):
@@ -23,11 +23,11 @@ def check_activity(recipient_username):
     transaction_count = 0
     for log_file in log_files:
         log_path = os.path.join(log_directory, log_file)
-        with open(log_path, 'r') as file:
+        with open(log_path, 'r', encoding='utf-8-sig') as file:
             log_data = json.load(file)
             log_time = datetime.datetime.strptime(log_data['Дата'] + ' ' + log_data['Время'], "%Y-%m-%d %H:%M:%S")
             time_difference = current_time - log_time
-            if time_difference.total_seconds() <= time_threshold_minutes * 60:
+            if time_difference.total_seconds() <= time_limit_minutes * 60:
                 transaction_count += 1
                 if transaction_count >= max_transactions:
                     return True
@@ -35,7 +35,7 @@ def check_activity(recipient_username):
 
 
 async def transaction_log(sender_username, sender_user_id, sender_fullname, recip_username, recip_user_id,
-                          recipient_fullname, amount, message: types.Message):
+                          recipient_fullname, amount, message: types.Message,comments_arg):
     current_datetime = datetime.datetime.now()
     formatted_date = current_datetime.strftime("%Y-%m-%d")
     time_log_name = current_datetime.strftime("%H-%M-%S")
@@ -59,11 +59,12 @@ async def transaction_log(sender_username, sender_user_id, sender_fullname, reci
             "UserID": recip_user_id,
             "Полное имя": recipient_fullname
         },
-        "Сколько монет": amount
+        "Сколько монет": amount,
+        "Причина перевода": comments_arg
     }
 
     with open(f'{recipient_directory}/{formatted_date} ({time_log_name})_transaction_log.json',
-              'a') as log_file:
+              'a', encoding='utf-8-sig') as log_file:
         json.dump(log_entry, log_file, ensure_ascii=False, indent=4)
 
     if check_activity(recipient_fullname):

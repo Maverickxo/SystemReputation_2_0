@@ -1,13 +1,17 @@
-from aiogram import Bot, Dispatcher, executor, types
+from aiogram import Bot, Dispatcher, executor
 import asyncio as messagedelete
-import sqlite3
 import logging
 from balance_anti_cheat import check_and_update_rank
+
 from send_money import send_coins_to_user, gopstop_coins_to_user
 
+import asyncio
 from check_access import *
 from config import *
 from keywords_data import *
+from status_bot import on_startup
+
+from connect_bd import connect_data_b
 
 logging.basicConfig(level=logging.INFO)
 
@@ -40,39 +44,23 @@ def get_rank(reputation):
     return 'Днище Бля'
 
 
-def create_database():
-    conn = sqlite3.connect(REPA_BD)
-    cursor = conn.cursor()
-    cursor.execute(
-        '''CREATE TABLE IF NOT EXISTS reputation (
-                "user_id"    INTEGER,
-                "reputation" INTEGER,
-                "user_name"  TEXT,
-                "ranks"      TEXT,
-                "money"      INTEGER NOT NULL DEFAULT 0,
-                PRIMARY KEY("user_id")
-        )''')
-    conn.commit()
-    conn.close()
-
-
 # Команда для просмотра репутации участника на основе ключевых слов
 @dp.message_handler(
     lambda message: any(keyword in message.text.lower() for keyword in ['рейтинг', 'репа', 'репутация']))
 async def get_reputation(message: types.Message):
+    connection, cursor = connect_data_b()
+
     words = message.text.split()
     if len(words) == 1:
-        conn = sqlite3.connect(REPA_BD)
-        cursor = conn.cursor()
-
         user_id = message.from_user.id
         user_name = message.from_user.full_name
-        cursor.execute('SELECT reputation FROM reputation WHERE user_id=?', (user_id,))
+
+        cursor.execute('SELECT reputation FROM reputation WHERE user_id = %s', (user_id,))
         row = cursor.fetchone()
         if row is None:
-            cursor.execute('INSERT INTO reputation (user_id, reputation, user_name) VALUES (?, ?, ?)',
+            cursor.execute('INSERT INTO reputation (user_id, reputation, user_name) VALUES (%s, %s, %s)',
                            (user_id, 0, user_name))
-            conn.commit()
+
             sent_message = await message.reply(f'Поздравляю с регистрацией!'
                                                f'\nВаша репутация: 0 '
                                                f'\nВаше звание: Новичок'
@@ -92,7 +80,9 @@ async def get_reputation(message: types.Message):
                 await sent_message.delete()
             except Exception as e:
                 print(e)
-        conn.close()
+
+    cursor.close()
+    connection.close()
 
 
 # Команда для увеличения репутации участника на основе ключевых слов
@@ -100,8 +90,8 @@ async def get_reputation(message: types.Message):
     lambda message: any(
         keyword in message.text.lower() for keyword in ['спасибо', 'круто', 'спс', 'благодарю', '+', '👍']))
 async def increase_reputation(message: types.Message):
-    conn = sqlite3.connect(REPA_BD)
-    cursor = conn.cursor()
+    connection, cursor = connect_data_b()
+
     words = message.text.split()
     if len(words) == 1:
         if message.reply_to_message is None:
@@ -126,7 +116,7 @@ async def increase_reputation(message: types.Message):
             return
 
         change_value = 1
-        cursor.execute('SELECT reputation FROM reputation WHERE user_id=?', (recipient_id,))
+        cursor.execute('SELECT reputation FROM reputation WHERE user_id = %s', (recipient_id,))
         row = cursor.fetchone()
         user_name = message.reply_to_message.from_user.full_name
         user_id = message.reply_to_message.from_user.id
@@ -142,8 +132,7 @@ async def increase_reputation(message: types.Message):
             return
         else:
             reputation = row[0] + change_value
-            cursor.execute('UPDATE reputation SET reputation=? WHERE user_id=?', (reputation, recipient_id))
-            conn.commit()
+            cursor.execute('UPDATE reputation SET reputation = %s WHERE user_id = %s', (reputation, recipient_id))
 
             points_for_rank = 500
 
@@ -153,8 +142,6 @@ async def increase_reputation(message: types.Message):
             else:
                 print(f"Баллы уже были начислены за это звание: {rank}")
 
-            conn.commit()
-            conn.close()
             rank = get_rank(reputation)
             reply_text = (
                 f'Репутация пользователя {message.reply_to_message.from_user.first_name} увеличена на {abs(change_value)}.'
@@ -165,13 +152,15 @@ async def increase_reputation(message: types.Message):
                 await sent_message.delete()
             except Exception as e:
                 print(e)
+    cursor.close()
+    connection.close()
 
 
 # Команда для уменьшения репутации участника на основе ключевых слов
 @dp.message_handler(lambda message: any(keyword in message.text.lower() for keyword in ['👎']))
 async def decrease_reputation(message: types.Message):
-    conn = sqlite3.connect(REPA_BD)
-    cursor = conn.cursor()
+    connection, cursor = connect_data_b()
+
     words = message.text.split()
     if len(words) == 1:
         if message.reply_to_message is None:
@@ -194,14 +183,14 @@ async def decrease_reputation(message: types.Message):
 
         user_id = message.reply_to_message.from_user.id
         change_value = -1
-        cursor.execute('SELECT reputation FROM reputation WHERE user_id=?', (user_id,))
+        cursor.execute('SELECT reputation FROM reputation WHERE user_id = %s', (user_id,))
         row = cursor.fetchone()
 
         user_name = message.reply_to_message.from_user.full_name
         if row is None:
             reply_text = f'Пользователь {user_name} не найден в базе данных репутации'
             sent_message = await message.reply(reply_text)
-            conn.close()
+
             await messagedelete.sleep(10)
             try:
                 await sent_message.delete()
@@ -210,52 +199,69 @@ async def decrease_reputation(message: types.Message):
             return
         else:
             reputation = row[0] + change_value
-            cursor.execute('UPDATE reputation SET reputation=? WHERE user_id=?', (reputation, user_id))
-            conn.commit()
-            conn.close()
+            cursor.execute('UPDATE reputation SET reputation = %s WHERE user_id = %s', (reputation, user_id))
             rank = get_rank(reputation)
-            reply_text = f'Репутация пользователя {message.reply_to_message.from_user.full_name}\nуменьшена на {abs(change_value)}.\nТекущая репутация: {reputation} \nВаше звание: {rank}.'
+
+            reply_text = (f'Репутация пользователя {message.reply_to_message.from_user.full_name}\n'
+                          f'уменьшена на {abs(change_value)}.\n'
+                          f'Текущая репутация: {reputation} \nВаше звание: {rank}.')
+
             sent_message = await message.reply(reply_text)
             await messagedelete.sleep(10)
             try:
                 await sent_message.delete()
             except Exception as e:
                 print(e)
+    cursor.close()
+    connection.close()
 
 
 # Команда для запроса общего рейтинга
 @dp.message_handler(commands=['rating'])
-async def get_rating(message: types.Message):
-    conn = sqlite3.connect(REPA_BD)
-    cursor = conn.cursor()
+async def get_rating(message: types.Message):  # TODO готово
+    await message.delete()
+    connection, cursor = connect_data_b()
     try:
         top_count = int(message.text.split()[1])
     except (IndexError, ValueError):
         top_count = 100
-    cursor.execute('SELECT user_id, reputation, user_name FROM reputation ORDER BY reputation DESC LIMIT ?',
-                   (top_count,))
+    cursor.execute(
+        'SELECT user_id, reputation, user_name FROM reputation WHERE reputation >0 ORDER BY reputation DESC LIMIT %s',
+        (top_count,))
     rows = cursor.fetchall()
-    conn.close()
+
     if not rows:
         sent_message = await message.reply('Нет данных о репутации пользователей')
-        await messagedelete.sleep(10)
+        await messagedelete.sleep(20)
         try:
             await bot.delete_message(chat_id=sent_message.chat.id, message_id=sent_message.message_id)
         except Exception as e:
             print(e)
         return
-    rating_text = f'Топ-{top_count} пользователей:\n'
-    for i, row in enumerate(rows):
-        user_id, reputation, user_name = row
-        rank = get_rank(reputation)
-        rating_text += f'{i + 1}. {user_name} Репутация: {reputation} Звание: {rank}\n'
-    sent_message = await message.reply(rating_text)
-    await messagedelete.sleep(10)
-    try:
-        await sent_message.delete()
-    except Exception as e:
-        print(e)
-    await message.delete()
+
+    sent_messages = []
+    chunk_size = 30
+    rows_per_message = [rows[i:i + chunk_size] for i in range(0, len(rows), chunk_size)]
+
+    for chunk_rows in rows_per_message:
+        rating_text = f'Топ-{top_count} пользователей:\n'
+        for i, row in enumerate(chunk_rows):
+            user_id, reputation, user_name = row
+            rank = get_rank(reputation)
+            rating_text += f'{i + 1}. {user_name} Репутация: {reputation} Звание: {rank}\n'
+
+        sent_message = await message.answer(rating_text)
+        sent_messages.append(sent_message)
+
+    await asyncio.sleep(20)
+    for sent_message in sent_messages:
+        try:
+            await sent_message.delete()
+        except Exception as e:
+            print(e)
+
+    cursor.close()
+    connection.close()
 
 
 # Команда для отправки от имени бота в чат
@@ -268,8 +274,19 @@ async def send_to_chat(message: types.Message):
 
 
 @dp.message_handler(commands=['send'])
-async def send_to_money(message: types.Message):
-    await send_coins_to_user(message)
+async def send_coins_to(message: types.Message):
+    command_args = message.get_args()
+    if len(command_args) == 0:
+        await message.answer("Вы не указали количество монет"
+                             " и причину - `/send 1 причина`", parse_mode='markdown')
+    else:
+        args = command_args.split(maxsplit=1)
+        money_arg = args[0]
+        if len(args) > 1:
+            comments_arg = args[1]
+        else:
+            comments_arg = "Не указана"
+        await send_coins_to_user(message, money_arg, comments_arg)
 
 
 @dp.message_handler(commands=['gopstop'])
@@ -280,11 +297,11 @@ async def gopstop_to_money(message: types.Message):
 
 @dp.message_handler(commands=['rank_system'])
 @auth
-async def Rank_System_handler(message: types.Message):
+async def rank_system_handler(message: types.Message):
     await message.delete()
     await message.answer(Rank_System, parse_mode='markdown')
 
 
 if __name__ == '__main__':
-    create_database()
-    executor.start_polling(dp, skip_updates=True)
+    # create_database()
+    executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
